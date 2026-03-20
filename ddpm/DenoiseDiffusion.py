@@ -5,7 +5,7 @@ from torch import nn
 import torch.nn.functional as F
 import torch.utils.data
 
-from labml_nn.diffusion.ddpm.utils import gather
+from utils import gather
 
 
 class DenoiseDiffusion:
@@ -122,7 +122,8 @@ class DenoiseDiffusion:
         eps_theta = self.eps_model(xt, t)
 
         # return the loss between the true noise (epsilon) and the predicted noise (epsilon_theta)
-        return F.mse_loss(eps_theta, noise)
+        return F.mse_loss(noise, eps_theta)
+
         
         
         
