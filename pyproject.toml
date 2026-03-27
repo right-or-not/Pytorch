@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "d2l>=1.0.3",
+    "imageio>=2.37.3",
     "jupyter>=1.0.0",
     "labml-nn>=0.5.1",
     "numpy>=1.23.5",

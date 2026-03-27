@@ -1,15 +1,13 @@
 from typing import List
 
-from labml_nn import diffusion
-from torch import optim
 import torchvision
 from PIL import Image
 
 import torch
 import torch.utils.data
+from torch import optim
 from labml import lab, tracker, experiment, monit
 from labml.configs import BaseConfigs, option
-from zmq import has
 from DenoiseDiffusion import DenoiseDiffusion
 from unet import UNet
 from labml_nn.helpers.device import DeviceConfigs
@@ -41,4 +39,187 @@ class Configs(BaseConfigs):
     data_loader: torch.utils.data.DataLoader
     optimizer: torch.optim.Adam
 
+    def init(self):
+        """
+        Initialize the experiment
+        """
+
+        self.eps_model = UNet(
+            self.image_channels,
+            self.n_channels,
+            self.channels_multipliers,
+            self.has_attention
+        ).to(self.device)
+
+        self.diffusion = DenoiseDiffusion(
+            self.eps_model,
+            self.n_steps,
+            self.device
+        )
+
+        # Create dataloader
+        self.data_loader = torch.utils.data.DataLoader(
+            dataset=self.dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            pin_memory=True
+        )
+
+        # Create optimizer
+        self.optimizer = optim.Adam(
+            params=self.eps_model.parameters(),
+            lr=self.learning_rate
+        )
+
+        # Image logging
+        tracker.set_image('samples', True)
+
         
+    def sample(self):
+        """
+        Sample Images
+        """
+
+        with torch.no_grad():
+            x = torch.randn(
+                [self.n_samples, self.image_channels, self.image_size, self.image_size],
+                device=self.device
+            )
+
+            for t_ in monit.iterate("Sample", self.n_steps):
+                t = self.n_steps - t_ - 1
+                x = self.diffusion.p_sample(
+                    xt=x,
+                    t=x.new_full((self.n_samples,), t, dtype=torch.long)
+                )
+
+            tracker.save("sample", x)
+
+    
+    def train(self):
+        """
+        Train
+        """
+
+        for data in monit.iterate("Train", self.data_loader):
+            tracker.add_global_step()
+            data = data.to(self.device)
+            self.optimizer.zero_grad()
+            loss = self.diffusion.loss(data)
+            loss.backward()
+            self.optimizer.step()
+            tracker.save("loss", loss)
+
+
+    def run(self):
+        """
+        Training Loop
+        """
+        for _ in monit.loop(self.epochs):
+            self.train()
+            self.sample()
+            tracker.new_line()
+
+    
+
+class CelebADataset(torch.utils.data.Dataset):
+    """
+    Celebrate a HQ dataset
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        folder = lab.get_data_path() / "celebA"
+        self._files = [p for p in folder.glob("**/*.jpg")]
+
+        self._transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(self.image_size),
+            torchvision.transforms.ToTensor()
+        ])
+
+    def __len__(self):
+        """
+        Size of the dataset
+        """
+
+        return len(self._files)
+    
+    def __getitem__(self, index: int):
+        """
+        Get a image
+        """
+        img = Image.open(self._files[index])
+        img = self._transform(img)
+        return img
+    
+
+
+@option(Configs.dataset, 'CelebA')
+def celeb_dataset(c: Configs):
+    """
+    Create a CelebA dataset
+    """
+    return CelebADataset(c.image_size)
+
+
+class MNistDataset(torchvision.datasets.MNIST):
+    """
+    MNIST dataset
+    """
+
+    def __init__(self, image_size):
+        transform = torchvision.transforms.Compose([
+            torchvision.transforms.Resize(image_size),
+            torchvision.transforms.ToTensor(),
+        ])
+
+        super().__init__(
+            str(lab.get_data_path()),
+            train=True,
+            download=True,
+            transform=transform
+        )
+    
+    def __getitem__(self, index):
+        return super().__getitem__(index)[0]
+    
+
+@option(Configs.dataset, 'MNIST')
+def mnist_dataset(c: Configs):
+    """
+    Create a MNIST dataset
+    """
+    return MNistDataset(c.image_size)
+
+
+def main():
+    # Create experiment
+    experiment.create(name="diffuse", writers={"screen", "labml"})
+
+    # Create configurations
+    configs = Configs()
+
+    # Set configurations
+    experiment.configs(configs, {
+        "dataset": "CeleA",
+        "image_channels": 3,
+        "epoches": 100,
+    })
+
+    # Initialize
+    configs.init()
+
+    # Set models for saving and loading
+    experiment.add_pytorch_models({
+        "eps_model": configs.eps_model
+    })
+
+    # Start and run the training loop
+    with experiment.start():
+        configs.run()
+
+
+if __name__ == '__main__':
+    main()
+
