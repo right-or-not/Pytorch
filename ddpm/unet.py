@@ -160,7 +160,9 @@ class UpBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, time_channels: int, has_attention: bool):
         super().__init__()
 
-        self.residual = ResidualBlock(in_channels + out_channels, out_channels, time_channels)
+        # `in_channels` is the actual number of channels after concatenating
+        # the skip connection in `UNet.forward`.
+        self.residual = ResidualBlock(in_channels, out_channels, time_channels)
 
         if has_attention:
             self.attention = AttentionBlock(out_channels)
@@ -241,27 +243,33 @@ class UNet(nn.Module):
 
         # First half of the U-Net: decreasing resolution
         down = []
+        skip_channels = [n_channels]
         out_channels = in_channels = n_channels
         for i in range(n_resolutions):
             out_channels = n_channels * channel_multipliers[i]
             for _ in range(n_blocks):
                 down.append(DownBlock(in_channels, out_channels, n_channels * 4, has_attention[i]))
                 in_channels = out_channels
+                skip_channels.append(in_channels)
             if i < n_resolutions - 1:
                 down.append(Downsample(in_channels))
+                skip_channels.append(in_channels)
 
         self.down = nn.ModuleList(down)
-        self.middle = MiddleBlock(out_channels, n_channels * 4, )
+        self.middle = MiddleBlock(out_channels, n_channels * 4)
 
         # Second half of the U-Net: increasing resolution
         up = []
         in_channels = out_channels
+        skip_channels = list(reversed(skip_channels))
         for i in reversed(range(n_resolutions)):
-            out_channels = in_channels
             for _ in range(n_blocks):
-                up.append(UpBlock(in_channels, out_channels, n_channels * 4, has_attention[i]))
-            out_channels = in_channels // channel_multipliers[i]
-            up.append(UpBlock(in_channels, out_channels, n_channels * 4, has_attention[i]))
+                skip = skip_channels.pop(0)
+                up.append(UpBlock(in_channels + skip, in_channels, n_channels * 4, has_attention[i]))
+
+            out_channels = n_channels if i == 0 else n_channels * channel_multipliers[i - 1]
+            skip = skip_channels.pop(0)
+            up.append(UpBlock(in_channels + skip, out_channels, n_channels * 4, has_attention[i]))
             in_channels = out_channels
             if i > 0:
                 up.append(Upsample(in_channels))
@@ -295,5 +303,4 @@ class UNet(nn.Module):
         x = self.activation(x)
         x = self.final(x) 
         return x
-
 

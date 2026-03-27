@@ -15,12 +15,12 @@ class Sampler:
     Sampler Class
     """
 
-    def __int__(self, deffusion: DenoiseDiffusion, image_channels: int, image_size: int, device: torch.device):
+    def __init__(self, diffusion: DenoiseDiffusion, image_channels: int, image_size: int, device: torch.device):
         """
         Init Sampler Class
         """
         
-        self.diffusion = deffusion
+        self.diffusion = diffusion
         self.image_channels = image_channels
         self.image_size = image_size
         self.device = device

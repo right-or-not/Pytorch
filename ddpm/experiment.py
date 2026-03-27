@@ -18,7 +18,7 @@ class Configs(BaseConfigs):
     Configurations
     """
 
-    device: torch.device = DeviceConfigs()
+    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     eps_model: UNet
     diffusion: DenoiseDiffusion
@@ -71,8 +71,13 @@ class Configs(BaseConfigs):
             lr=self.learning_rate
         )
 
-        # Image logging
-        tracker.set_image('samples', True)
+        # Newer labml versions don't expose tracker.set_image().
+        # We save generated samples to disk in sample() instead.
+
+
+        print(f"Dataset: {self.dataset.__class__.__name__}")
+        print(f"Module: {self.eps_model}")
+        print(f"Using device: {self.device}")
 
         
     def sample(self):
@@ -93,7 +98,10 @@ class Configs(BaseConfigs):
                     t=x.new_full((self.n_samples,), t, dtype=torch.long)
                 )
 
-            tracker.save("sample", x)
+            samples_dir = lab.get_experiments_path() / "samples"
+            samples_dir.mkdir(parents=True, exist_ok=True)
+            sample_path = samples_dir / f"{tracker.get_global_step():08d}.png"
+            torchvision.utils.save_image(x.clamp(0, 1), str(sample_path), nrow=int(self.n_samples ** 0.5))
 
     
     def train(self):
@@ -119,6 +127,10 @@ class Configs(BaseConfigs):
             self.train()
             self.sample()
             tracker.new_line()
+
+        checkpoints_dir = lab.get_experiments_path() / "checkpoints"
+        checkpoints_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(self.eps_model.state_dict(), checkpoints_dir / "eps_model.pt")
 
     
 
@@ -210,11 +222,6 @@ def main():
     # Initialize
     configs.init()
 
-    # Set models for saving and loading
-    experiment.add_pytorch_models({
-        "eps_model": configs.eps_model
-    })
-
     # Start and run the training loop
     with experiment.start():
         configs.run()
@@ -222,4 +229,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

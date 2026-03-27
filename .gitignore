@@ -11,3 +11,10 @@ wheels/
 
 # datasets
 data/
+
+# books
+books/
+*.pdf
+
+#logs
+logs/

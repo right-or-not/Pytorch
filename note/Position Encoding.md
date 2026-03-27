@@ -4,8 +4,8 @@
 
 ## Encoding Formulas
 
-- $PE(pos, 2i) = \sin(\frac{pos}{10000^{\frac{2i}{dim}}}})$
-- $PE(pos, 2i+1) = \cos(\frac{pos}{10000^{\frac{2i}{dim}}}})$
+- $PE(pos, 2i) = \sin(\frac{pos}{10000^{\frac{2i}{dim}}})$
+- $PE(pos, 2i+1) = \cos(\frac{pos}{10000^{\frac{2i}{dim}}})$
 
 ## Understanding of Encoding Formulas
 
